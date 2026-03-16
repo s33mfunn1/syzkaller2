@@ -1,0 +1,27 @@
+{
+	"target": "linux/amd64",
+	"http": "127.0.0.1:56741",
+	"workdir": "/home/sasha/syzkaller2/workdir",
+	"kernel_obj": "/home/sasha/linux-stable",
+	"image": "/home/sasha/image/trixie.img",
+	"sshkey": "/home/sasha/image/trixie.id_rsa",
+	"syzkaller": "/home/sasha/syzkaller2",
+	"procs": 1,
+	"cover": true,
+	"reproduce": false,
+	"enable_syscalls": [
+		"syz_emit_ethernet"
+	],
+	"experimental": {
+		"remote_cover": true
+	},
+	"type": "qemu",
+	"vm": {
+		"count": 1,
+		"kernel": "/home/sasha/linux-stable/arch/x86/boot/bzImage",
+		"cpu": 2,
+		"mem": 2048,
+		"qemu_args": "",
+		"cmdline": "net.ifnames=0 ipv6.disable=1"
+	}
+}

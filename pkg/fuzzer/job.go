@@ -16,6 +16,7 @@ import (
 	"github.com/google/syzkaller/pkg/cover"
 	"github.com/google/syzkaller/pkg/flatrpc"
 	"github.com/google/syzkaller/pkg/fuzzer/queue"
+	"github.com/google/syzkaller/pkg/log"
 	"github.com/google/syzkaller/pkg/signal"
 	"github.com/google/syzkaller/prog"
 )
@@ -139,6 +140,9 @@ func (job *triageJob) execute(req *queue.Request, flags ProgFlags) *queue.Result
 func (job *triageJob) run(fuzzer *Fuzzer) {
 	fuzzer.statNewInputs.Add(1)
 	job.fuzzer = fuzzer
+	if _, ok := job.calls[-1]; ok {
+		log.Logf(0, "[syzkaller] triageJob start: calls=%d flags=%d", len(job.calls), job.flags)
+	}
 	job.info.Logf("\n%s", job.p.Serialize())
 	for call, info := range job.calls {
 		job.info.Logf("call #%d [%s]: |new signal|=%d%s",
@@ -148,6 +152,9 @@ func (job *triageJob) run(fuzzer *Fuzzer) {
 	// Compute input coverage and non-flaky signal for minimization.
 	stop := job.deflake(job.execute)
 	if stop {
+		if _, ok := job.calls[-1]; ok {
+			log.Logf(0, "[syzkaller] triageJob stop=true before handleCall")
+		}
 		return
 	}
 	var wg sync.WaitGroup
@@ -162,12 +169,22 @@ func (job *triageJob) run(fuzzer *Fuzzer) {
 }
 
 func (job *triageJob) handleCall(call int, info *triageCall) {
-	if info.newStableSignal.Empty() {
+	// TEMPORARY: for Extra, accept any coverage — save if we have any signal or cover.
+	if call != -1 && info.newStableSignal.Empty() {
 		return
+	}
+	if call == -1 && info.newStableSignal.Empty() && info.stableSignal.Empty() && len(info.cover.Serialize()) == 0 {
+		log.Logf(0, "[syzkaller] handleCall Extra: skipped empty stable/new/cover")
+		return
+	}
+	if call == -1 {
+		log.Logf(0, "[syzkaller] handleCall Extra: proceed cover=%d stable=%d newStable=%d",
+			len(info.cover.Serialize()), info.stableSignal.Len(), info.newStableSignal.Len())
 	}
 
 	p := job.p
-	if job.flags&ProgMinimized == 0 {
+	// TEMPORARY: skip minimization for Extra (call=-1); it often fails when Extra is flaky.
+	if job.flags&ProgMinimized == 0 && call != -1 {
 		p, call = job.minimize(call, info)
 		if p == nil {
 			return
@@ -208,6 +225,9 @@ func (job *triageJob) handleCall(call int, info *triageCall) {
 		}
 	}
 	job.fuzzer.Logf(2, "added new input for %v to the corpus: %s", callName, p)
+	if call == -1 {
+		log.Logf(0, "[syzkaller] saving Extra to corpus: cover=%d signal=%d", len(info.cover.Serialize()), info.stableSignal.Len())
+	}
 	input := corpus.NewInput{
 		Prog:     p,
 		Call:     call,
@@ -221,12 +241,25 @@ func (job *triageJob) handleCall(call int, info *triageCall) {
 func (job *triageJob) deflake(exec func(*queue.Request, ProgFlags) *queue.Result) (stop bool) {
 	job.info.Logf("deflake started")
 
+	extraOnly := len(job.calls) == 1
+	if _, ok := job.calls[-1]; !ok {
+		extraOnly = false
+	}
 	avoid := []queue.ExecutorID{job.executor}
 	needRuns := deflakeNeedCorpusRuns
 	if job.fuzzer.Config.Snapshot {
 		needRuns = deflakeNeedSnapshotRuns
 	} else if job.flags&ProgFromCorpus == 0 {
 		needRuns = deflakeNeedRuns
+	}
+	// Remote/extra coverage (call=-1) is often non-deterministic; require only 1 run
+	// so we still add to corpus and grow coverage instead of never saving.
+	if extraOnly {
+		needRuns = 1
+		// With procs=1 there's no alternative executor, so avoid-list based balancing
+		// only delays Extra triage. Execute immediately to persist remote coverage.
+		avoid = nil
+		log.Logf(0, "[syzkaller] deflake Extra-only: needRuns=%d", needRuns)
 	}
 	prevTotalNewSignal := 0
 	for run := 1; ; run++ {
@@ -236,18 +269,21 @@ func (job *triageJob) deflake(exec func(*queue.Request, ProgFlags) *queue.Result
 			indices = append(indices, call)
 			totalNewSignal += len(info.newSignal)
 		}
-		if job.stopDeflake(run, needRuns, prevTotalNewSignal == totalNewSignal) {
+		if job.stopDeflake(run, needRuns, prevTotalNewSignal == totalNewSignal, extraOnly) {
 			break
 		}
 		prevTotalNewSignal = totalNewSignal
 		result := exec(&queue.Request{
 			Prog:            job.p,
-			ExecOpts:        setFlags(flatrpc.ExecFlagCollectCover | flatrpc.ExecFlagCollectSignal),
+			ExecOpts:        job.fuzzer.execOptsForJob(flatrpc.ExecFlagCollectCover | flatrpc.ExecFlagCollectSignal),
 			ReturnAllSignal: indices,
 			Avoid:           avoid,
 			Stat:            job.fuzzer.statExecTriage,
 		}, progInTriage)
 		if result.Stop() {
+			if _, onlyExtra := job.calls[-1]; onlyExtra {
+				log.Logf(0, "[syzkaller] deflake Extra-only: result.Stop status=%v", result.Status)
+			}
 			return true
 		}
 		avoid = append(avoid, result.Executor)
@@ -291,18 +327,42 @@ func (job *triageJob) deflake(exec func(*queue.Request, ProgFlags) *queue.Result
 	}
 	job.info.Logf("deflake complete")
 	for call, info := range job.calls {
-		info.stableSignal = info.signals[needRuns-1]
-		info.newStableSignal = info.newSignal.Intersection(info.stableSignal)
+		// Extra (remote) coverage is often non-deterministic; use signal from any run
+		// so we don't require intersection over needRuns and still add to corpus.
+		if call == -1 {
+			info.stableSignal = info.signals[0]
+		} else {
+			info.stableSignal = info.signals[needRuns-1]
+		}
+		// For Extra (remote coverage), accept any new signal so we add to corpus even if flaky.
+		if call == -1 {
+			info.newStableSignal = info.newSignal.Copy()
+		} else {
+			info.newStableSignal = info.newSignal.Intersection(info.stableSignal)
+		}
 		job.info.Logf("call #%d [%s]: |stable signal|=%d, |new stable signal|=%d%s",
 			call, job.p.CallName(call), info.stableSignal.Len(), info.newStableSignal.Len(),
 			signalPreview(info.newStableSignal))
+		if call == -1 {
+			log.Logf(0, "[syzkaller] deflake Extra result: cover=%d stable=%d newStable=%d",
+				len(info.cover.Serialize()), info.stableSignal.Len(), info.newStableSignal.Len())
+		}
 	}
 	return false
 }
 
-func (job *triageJob) stopDeflake(run, needRuns int, noNewSignal bool) bool {
+func (job *triageJob) stopDeflake(run, needRuns int, noNewSignal bool, extraOnly bool) bool {
 	if job.fuzzer.Config.Snapshot {
 		return run >= needRuns+1
+	}
+	if extraOnly {
+		// For remote Extra coverage we already keep first-run cover baseline and
+		// don't require stable intersection; stop after the required runs.
+		return run >= needRuns
+	}
+	// Always run at least needRuns times so deflake merges cover/signal from exec.
+	if run < needRuns {
+		return false
 	}
 	haveSignal := true
 	for _, call := range job.calls {
@@ -359,7 +419,7 @@ func (job *triageJob) minimize(call int, info *triageCall) (*prog.Prog, int) {
 		for i := 0; i < minimizeAttempts; i++ {
 			result := job.execute(&queue.Request{
 				Prog:            p1,
-				ExecOpts:        setFlags(flatrpc.ExecFlagCollectSignal),
+				ExecOpts:        job.fuzzer.execOptsForJob(flatrpc.ExecFlagCollectSignal),
 				ReturnAllSignal: []int{call1},
 				Stat:            job.fuzzer.statExecMinimize,
 			}, 0)

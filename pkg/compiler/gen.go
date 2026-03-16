@@ -6,6 +6,7 @@ package compiler
 import (
 	"bytes"
 	"fmt"
+	"os"
 	"reflect"
 	"sort"
 
@@ -19,7 +20,7 @@ const sizeUnassigned = ^uint64(0)
 func (comp *compiler) genResources() []*prog.ResourceDesc {
 	var resources []*prog.ResourceDesc
 	for name, n := range comp.resources {
-		if !comp.used[name] {
+		if !comp.used[name] && os.Getenv("SYZ_ALLOW_UNUSED") == "" {
 			continue
 		}
 		resources = append(resources, comp.genResource(n))

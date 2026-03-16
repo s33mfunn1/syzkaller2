@@ -3978,6 +3978,26 @@ static void sandbox_common_mount_tmpfs(void)
 	if (mount("/syz-inputs", "./syz-tmp/newroot/syz-inputs", NULL, bind_mount_flags | MS_RDONLY, NULL) && errno != ENOENT)
 		fail("mount(syz-inputs) failed");
 
+	// For setup_ext_test (e.g. GTP via ip link) - need bin, libs and ip
+	if (mkdir("./syz-tmp/newroot/bin", 0755) == 0)
+		mount("/bin", "./syz-tmp/newroot/bin", NULL, bind_mount_flags | MS_RDONLY, NULL);
+	if (mkdir("./syz-tmp/newroot/lib", 0755) == 0)
+		mount("/lib", "./syz-tmp/newroot/lib", NULL, bind_mount_flags | MS_RDONLY, NULL);
+	if (mkdir("./syz-tmp/newroot/lib64", 0755) == 0)
+		mount("/lib64", "./syz-tmp/newroot/lib64", NULL, bind_mount_flags | MS_RDONLY, NULL);
+	if (mkdir("./syz-tmp/newroot/usr", 0755) == 0) {
+		if (mkdir("./syz-tmp/newroot/usr/bin", 0755) == 0)
+			mount("/usr/bin", "./syz-tmp/newroot/usr/bin", NULL, bind_mount_flags | MS_RDONLY, NULL);
+		if (mkdir("./syz-tmp/newroot/usr/sbin", 0755) == 0)
+			mount("/usr/sbin", "./syz-tmp/newroot/usr/sbin", NULL, bind_mount_flags | MS_RDONLY, NULL);
+		if (mkdir("./syz-tmp/newroot/usr/lib", 0755) == 0)
+			mount("/usr/lib", "./syz-tmp/newroot/usr/lib", NULL, bind_mount_flags | MS_RDONLY, NULL);
+		if (mkdir("./syz-tmp/newroot/usr/lib64", 0755) == 0)
+			mount("/usr/lib64", "./syz-tmp/newroot/usr/lib64", NULL, bind_mount_flags | MS_RDONLY, NULL);
+	}
+	if (mkdir("./syz-tmp/newroot/sbin", 0755) == 0)
+		mount("/sbin", "./syz-tmp/newroot/sbin", NULL, bind_mount_flags | MS_RDONLY, NULL);
+
 #if SYZ_EXECUTOR || SYZ_CGROUPS
 	initialize_cgroups();
 #endif

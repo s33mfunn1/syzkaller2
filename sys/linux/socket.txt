@@ -15,7 +15,9 @@ include <uapi/linux/if_vlan.h>
 include <uapi/asm-generic/socket.h>
 
 resource sock[fd]
-type sock_port int16be[20000:20004]
+# GTP: src 12345, dst 2152 (GTP1-U), per gtp_tap_inject
+sock_port_vals = 12345, 2152
+type sock_port flags[sock_port_vals, int16be]
 
 # TODO: describe socketcall syscall
 

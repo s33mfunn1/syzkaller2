@@ -32,6 +32,8 @@ $(warning $(RED)run command via tools/syz-env for best compatibility, see:$(RESE
 $(warning $(RED)https://github.com/google/syzkaller/blob/master/docs/contributing.md#using-syz-env$(RESET))
 endif
 
+export SYZ_ALLOW_UNUSED=1
+
 GITREV=$(shell git rev-parse HEAD)
 ifeq ("$(shell git diff --shortstat)", "")
 	REV=$(GITREV)

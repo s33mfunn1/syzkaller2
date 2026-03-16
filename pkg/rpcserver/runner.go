@@ -405,6 +405,10 @@ func (runner *Runner) handleExecResult(msg *flatrpc.ExecResult) error {
 	}
 	delete(runner.requests, msg.Id)
 	delete(runner.executing, msg.Id)
+	// Diagnostic: log when we receive ExtraRaw (remote coverage from executor)
+	if msg.Info != nil && len(msg.Info.ExtraRaw) > 0 {
+		fmt.Fprintf(os.Stderr, "[syzkaller] runner: received ExtraRaw len=%d from executor\n", len(msg.Info.ExtraRaw))
+	}
 	if req.Type == flatrpc.RequestTypeProgram && msg.Info != nil {
 		for len(msg.Info.Calls) < len(req.Prog.Calls) {
 			msg.Info.Calls = append(msg.Info.Calls, &flatrpc.CallInfo{
@@ -416,7 +420,7 @@ func (runner *Runner) handleExecResult(msg *flatrpc.ExecResult) error {
 			runner.stats.statExecutorRestarts.Add(1)
 		}
 		for _, call := range msg.Info.Calls {
-			runner.convertCallInfo(call)
+			runner.convertCallInfo(call, false)
 		}
 		if len(msg.Info.ExtraRaw) != 0 {
 			msg.Info.Extra = msg.Info.ExtraRaw[0]
@@ -427,7 +431,12 @@ func (runner *Runner) handleExecResult(msg *flatrpc.ExecResult) error {
 				msg.Info.Extra.Signal = append(msg.Info.Extra.Signal, info.Signal...)
 			}
 			msg.Info.ExtraRaw = nil
-			runner.convertCallInfo(msg.Info.Extra)
+			coverBefore, signalBefore := len(msg.Info.Extra.Cover), len(msg.Info.Extra.Signal)
+			runner.convertCallInfo(msg.Info.Extra, true) // skip filterSignal for remote coverage (modules may be outside text range)
+			coverAfter, signalAfter := len(msg.Info.Extra.Cover), len(msg.Info.Extra.Signal)
+			// Diagnostic: always log Extra to trace where coverage is lost
+			fmt.Fprintf(os.Stderr, "[syzkaller] runner: Extra before convert Cover=%d Signal=%d, after Cover=%d Signal=%d\n",
+				coverBefore, signalBefore, coverAfter, signalAfter)
 		}
 		if !runner.cover && req.ExecOpts.ExecFlags&flatrpc.ExecFlagCollectSignal != 0 {
 			// Coverage collection is disabled, but signal was requested => use a substitute signal.
@@ -462,7 +471,7 @@ func (runner *Runner) handleExecResult(msg *flatrpc.ExecResult) error {
 	return nil
 }
 
-func (runner *Runner) convertCallInfo(call *flatrpc.CallInfo) {
+func (runner *Runner) convertCallInfo(call *flatrpc.CallInfo, skipFilterSignal bool) {
 	call.Cover = runner.canonicalizer.Canonicalize(call.Cover)
 	call.Signal = runner.canonicalizer.Canonicalize(call.Signal)
 
@@ -479,8 +488,9 @@ func (runner *Runner) convertCallInfo(call *flatrpc.CallInfo) {
 	// Mismatching addresses can mean either corrupted VM memory, or that the fuzzer somehow
 	// managed to inject output signal. If we see any bogus signal, drop whole signal
 	// (we don't want programs that can inject bogus coverage to end up in the corpus).
+	// Skip for remote coverage (Extra): module addresses may be outside textStart..textEnd.
 	var kernelAddresses targets.KernelAddresses
-	if runner.filterSignal {
+	if runner.filterSignal && !skipFilterSignal {
 		kernelAddresses = runner.sysTarget.KernelAddresses
 	}
 	textStart, textEnd := kernelAddresses.TextStart, kernelAddresses.TextEnd

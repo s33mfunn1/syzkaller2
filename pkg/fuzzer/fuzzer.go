@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"os"
 	"runtime"
 	"sort"
 	"sync"
@@ -16,6 +17,7 @@ import (
 	"github.com/google/syzkaller/pkg/csource"
 	"github.com/google/syzkaller/pkg/flatrpc"
 	"github.com/google/syzkaller/pkg/fuzzer/queue"
+	"github.com/google/syzkaller/pkg/log"
 	"github.com/google/syzkaller/pkg/mgrconfig"
 	"github.com/google/syzkaller/pkg/signal"
 	"github.com/google/syzkaller/pkg/stat"
@@ -184,6 +186,14 @@ func (fuzzer *Fuzzer) processResult(req *queue.Request, res *queue.Result, flags
 		for call, info := range res.Info.Calls {
 			fuzzer.handleCallInfo(req, info, call)
 		}
+		// Diagnostic for remote_cover (e.g. syz_emit_ethernet -> GTP): always print when Extra present
+		if extra := res.Info.Extra; extra != nil {
+			coverLen := len(extra.Cover)
+			fmt.Fprintf(os.Stderr, "[syzkaller] extra coverage: Cover=%d (from executor remote_cover)\n", coverLen)
+			if coverLen > 0 {
+				log.Logf(0, "remote coverage: received extra_cov.size=%d from executor", coverLen)
+			}
+		}
 		fuzzer.handleCallInfo(req, res.Info.Extra, -1)
 	}
 
@@ -208,43 +218,70 @@ func (fuzzer *Fuzzer) processResult(req *queue.Request, res *queue.Result, flags
 }
 
 type Config struct {
-	Debug          bool
-	Corpus         *corpus.Corpus
-	Logf           func(level int, msg string, args ...any)
-	Snapshot       bool
-	Coverage       bool
-	FaultInjection bool
-	Comparisons    bool
-	Collide        bool
-	EnabledCalls   map[*prog.Syscall]bool
-	NoMutateCalls  map[int]bool
-	FetchRawCover  bool
-	NewInputFilter func(call string) bool
-	PatchTest      bool
-	ModeKFuzzTest  bool
+	Debug             bool
+	Corpus            *corpus.Corpus
+	Logf              func(level int, msg string, args ...any)
+	Snapshot          bool
+	Coverage          bool
+	FaultInjection    bool
+	Comparisons       bool
+	Collide           bool
+	EnabledCalls      map[*prog.Syscall]bool
+	NoMutateCalls     map[int]bool
+	FetchRawCover     bool
+	NewInputFilter    func(call string) bool
+	PatchTest         bool
+	ModeKFuzzTest     bool
+	RequestExtraCover bool // request ExecEnvExtraCover for triage/minimize (e.g. remote_cover)
 }
 
 func (fuzzer *Fuzzer) triageProgCall(p *prog.Prog, info *flatrpc.CallInfo, call int, triage *map[int]*triageCall) {
 	if info == nil {
+		if call == -1 {
+			log.Logf(0, "[syzkaller] triage Extra: info=nil")
+		}
 		return
 	}
 	prio := signalPrio(p, info, call)
 	newMaxSignal := fuzzer.Cover.addRawMaxSignal(info.Signal, prio)
-	if newMaxSignal.Empty() {
+	if call == -1 {
+		log.Logf(0, "[syzkaller] triage Extra: cover=%d signal=%d newMax=%d",
+			len(info.Cover), len(info.Signal), newMaxSignal.Len())
+	}
+	// TEMPORARY: for Extra (remote coverage), treat any non-empty signal/cover as worth triaging.
+	if newMaxSignal.Empty() && (call != -1 || (len(info.Signal) == 0 && len(info.Cover) == 0)) {
+		if call == -1 {
+			log.Logf(0, "[syzkaller] triage Extra: skipped due to empty signal+cover")
+		}
 		return
 	}
-	if !fuzzer.Config.NewInputFilter(p.CallName(call)) {
+	if newMaxSignal.Empty() && call == -1 {
+		newMaxSignal = signal.FromRaw(info.Signal, prio)
+	}
+	callName := p.CallName(call)
+	if !fuzzer.Config.NewInputFilter(callName) {
+		if call == -1 {
+			log.Logf(0, "[syzkaller] triage Extra: filtered by NewInputFilter for %q", callName)
+		}
 		return
+	}
+	if call == -1 {
+		log.Logf(0, "[syzkaller] triage Extra: accepted, enqueue triage")
 	}
 	fuzzer.Logf(2, "found new signal in call %d in %s", call, p)
 	if *triage == nil {
 		*triage = make(map[int]*triageCall)
 	}
-	(*triage)[call] = &triageCall{
+	newCall := &triageCall{
 		errno:     info.Error,
 		newSignal: newMaxSignal,
 		signals:   [deflakeNeedRuns]signal.Signal{signal.FromRaw(info.Signal, prio)},
 	}
+	// Keep coverage from the first run as a baseline. Deflake may fail to provide
+	// additional info on flaky paths (especially remote/Extra coverage), but we
+	// still want to preserve already observed coverage.
+	newCall.cover.Merge(info.Cover)
+	(*triage)[call] = newCall
 }
 
 func (fuzzer *Fuzzer) handleCallInfo(req *queue.Request, info *flatrpc.CallInfo, call int) {
@@ -459,6 +496,17 @@ func setFlags(execFlags flatrpc.ExecFlag) flatrpc.ExecOpts {
 	}
 }
 
+// execOptsForJob returns ExecOpts for triage/minimize jobs. When RequestExtraCover
+// is set (e.g. remote_cover), adds ExecEnvExtraCover so the executor returns
+// Extra coverage and triage can add it to the corpus.
+func (fuzzer *Fuzzer) execOptsForJob(execFlags flatrpc.ExecFlag) flatrpc.ExecOpts {
+	opts := flatrpc.ExecOpts{ExecFlags: execFlags}
+	if fuzzer.Config.RequestExtraCover {
+		opts.EnvFlags |= flatrpc.ExecEnvExtraCover
+	}
+	return opts
+}
+
 // TODO: This method belongs better to pkg/flatrpc, but we currently end up
 // having a cyclic dependency error.
 func DefaultExecOpts(cfg *mgrconfig.Config, features flatrpc.Feature, debug bool) flatrpc.ExecOpts {
@@ -472,6 +520,13 @@ func DefaultExecOpts(cfg *mgrconfig.Config, features flatrpc.Feature, debug bool
 	if cfg.Cover {
 		env |= flatrpc.ExecEnvSignal
 	}
+	// When remote_cover is enabled, always request ExtraCover so that programs
+	// with remote_cover (e.g. syz_emit_ethernet) get GTP/softirq coverage.
+	// This is needed because the feature check may fail (e.g. DataMmapProg
+	// doesn't trigger remote coverage), but our actual programs do.
+	if cfg.Experimental.RemoteCover {
+		env |= flatrpc.ExecEnvExtraCover
+	}
 	sandbox, err := flatrpc.SandboxToFlags(cfg.Sandbox)
 	if err != nil {
 		panic(fmt.Sprintf("failed to parse sandbox: %v", err))
@@ -479,6 +534,9 @@ func DefaultExecOpts(cfg *mgrconfig.Config, features flatrpc.Feature, debug bool
 	env |= sandbox
 
 	exec := flatrpc.ExecFlagThreaded
+	if cfg.Cover {
+		exec |= flatrpc.ExecFlagCollectSignal | flatrpc.ExecFlagCollectCover
+	}
 	if !cfg.RawCover {
 		exec |= flatrpc.ExecFlagDedupCover
 	}
