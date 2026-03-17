@@ -199,8 +199,6 @@ static void cover_enable(cover_t* cov, bool collect_comps, bool extra)
 	};
 	arg.common_handle = kcov_remote_handle(KCOV_SUBSYSTEM_COMMON, procid + 1);
 	arg.handles[0] = kcov_remote_handle(KCOV_SUBSYSTEM_USB, procid + 1);
-	fprintf(stderr, "[syz-exec] kcov remote enable: procid=%llu handle=%llu\n",
-		(unsigned long long)procid, (unsigned long long)arg.common_handle);
 	if (ioctl(cov->fd, KCOV_REMOTE_ENABLE, &arg))
 		exitf("remote cover enable write trace failed");
 	cov->enabled = true;

@@ -1447,7 +1447,6 @@ void write_extra_output()
 	cover_collect(&extra_cov);
 	if (!extra_cov.size)
 		return;
-	debug("write_extra_output: extra_cov.size=%u (remote coverage collected)\n", extra_cov.size);
 	write_output(-1, &extra_cov, rpc::CallFlag::NONE, 997, all_extra_signal);
 	cover_reset(&extra_cov);
 }

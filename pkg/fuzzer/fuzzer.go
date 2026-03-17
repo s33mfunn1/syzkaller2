@@ -208,20 +208,20 @@ func (fuzzer *Fuzzer) processResult(req *queue.Request, res *queue.Result, flags
 }
 
 type Config struct {
-	Debug             bool
-	Corpus            *corpus.Corpus
-	Logf              func(level int, msg string, args ...any)
-	Snapshot          bool
-	Coverage          bool
-	FaultInjection    bool
-	Comparisons       bool
-	Collide           bool
-	EnabledCalls      map[*prog.Syscall]bool
-	NoMutateCalls     map[int]bool
-	FetchRawCover     bool
-	NewInputFilter    func(call string) bool
-	PatchTest         bool
-	ModeKFuzzTest     bool
+	Debug          bool
+	Corpus         *corpus.Corpus
+	Logf           func(level int, msg string, args ...any)
+	Snapshot       bool
+	Coverage       bool
+	FaultInjection bool
+	Comparisons    bool
+	Collide        bool
+	EnabledCalls   map[*prog.Syscall]bool
+	NoMutateCalls  map[int]bool
+	FetchRawCover  bool
+	NewInputFilter func(call string) bool
+	PatchTest      bool
+	ModeKFuzzTest  bool
 }
 
 func (fuzzer *Fuzzer) triageProgCall(p *prog.Prog, info *flatrpc.CallInfo, call int, triage *map[int]*triageCall) {
@@ -230,6 +230,9 @@ func (fuzzer *Fuzzer) triageProgCall(p *prog.Prog, info *flatrpc.CallInfo, call 
 	}
 	prio := signalPrio(p, info, call)
 	newMaxSignal := fuzzer.Cover.addRawMaxSignal(info.Signal, prio)
+	if newMaxSignal.Empty() {
+		return
+	}
 	if !fuzzer.Config.NewInputFilter(p.CallName(call)) {
 		return
 	}
@@ -455,7 +458,6 @@ func setFlags(execFlags flatrpc.ExecFlag) flatrpc.ExecOpts {
 		ExecFlags: execFlags,
 	}
 }
-
 
 // TODO: This method belongs better to pkg/flatrpc, but we currently end up
 // having a cyclic dependency error.

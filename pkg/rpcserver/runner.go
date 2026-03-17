@@ -416,7 +416,7 @@ func (runner *Runner) handleExecResult(msg *flatrpc.ExecResult) error {
 			runner.stats.statExecutorRestarts.Add(1)
 		}
 		for _, call := range msg.Info.Calls {
-			runner.convertCallInfo(call, false)
+			runner.convertCallInfo(call)
 		}
 		if len(msg.Info.ExtraRaw) != 0 {
 			msg.Info.Extra = msg.Info.ExtraRaw[0]
@@ -427,12 +427,7 @@ func (runner *Runner) handleExecResult(msg *flatrpc.ExecResult) error {
 				msg.Info.Extra.Signal = append(msg.Info.Extra.Signal, info.Signal...)
 			}
 			msg.Info.ExtraRaw = nil
-			coverBefore, signalBefore := len(msg.Info.Extra.Cover), len(msg.Info.Extra.Signal)
-			runner.convertCallInfo(msg.Info.Extra, true) // skip filterSignal for remote coverage (modules may be outside text range)
-			coverAfter, signalAfter := len(msg.Info.Extra.Cover), len(msg.Info.Extra.Signal)
-			// Diagnostic: always log Extra to trace where coverage is lost
-			fmt.Fprintf(os.Stderr, "[syzkaller] runner: Extra before convert Cover=%d Signal=%d, after Cover=%d Signal=%d\n",
-				coverBefore, signalBefore, coverAfter, signalAfter)
+			runner.convertCallInfo(msg.Info.Extra)
 		}
 		if !runner.cover && req.ExecOpts.ExecFlags&flatrpc.ExecFlagCollectSignal != 0 {
 			// Coverage collection is disabled, but signal was requested => use a substitute signal.
@@ -467,7 +462,7 @@ func (runner *Runner) handleExecResult(msg *flatrpc.ExecResult) error {
 	return nil
 }
 
-func (runner *Runner) convertCallInfo(call *flatrpc.CallInfo, skipFilterSignal bool) {
+func (runner *Runner) convertCallInfo(call *flatrpc.CallInfo) {
 	call.Cover = runner.canonicalizer.Canonicalize(call.Cover)
 	call.Signal = runner.canonicalizer.Canonicalize(call.Signal)
 
@@ -484,9 +479,8 @@ func (runner *Runner) convertCallInfo(call *flatrpc.CallInfo, skipFilterSignal b
 	// Mismatching addresses can mean either corrupted VM memory, or that the fuzzer somehow
 	// managed to inject output signal. If we see any bogus signal, drop whole signal
 	// (we don't want programs that can inject bogus coverage to end up in the corpus).
-	// Skip for remote coverage (Extra): module addresses may be outside textStart..textEnd.
 	var kernelAddresses targets.KernelAddresses
-	if runner.filterSignal && !skipFilterSignal {
+	if runner.filterSignal {
 		kernelAddresses = runner.sysTarget.KernelAddresses
 	}
 	textStart, textEnd := kernelAddresses.TextStart, kernelAddresses.TextEnd

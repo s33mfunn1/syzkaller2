@@ -3978,7 +3978,6 @@ static void sandbox_common_mount_tmpfs(void)
 	if (mount("/syz-inputs", "./syz-tmp/newroot/syz-inputs", NULL, bind_mount_flags | MS_RDONLY, NULL) && errno != ENOENT)
 		fail("mount(syz-inputs) failed");
 
-
 #if SYZ_EXECUTOR || SYZ_CGROUPS
 	initialize_cgroups();
 #endif
