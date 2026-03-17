@@ -405,10 +405,6 @@ func (runner *Runner) handleExecResult(msg *flatrpc.ExecResult) error {
 	}
 	delete(runner.requests, msg.Id)
 	delete(runner.executing, msg.Id)
-	// Diagnostic: log when we receive ExtraRaw (remote coverage from executor)
-	if msg.Info != nil && len(msg.Info.ExtraRaw) > 0 {
-		fmt.Fprintf(os.Stderr, "[syzkaller] runner: received ExtraRaw len=%d from executor\n", len(msg.Info.ExtraRaw))
-	}
 	if req.Type == flatrpc.RequestTypeProgram && msg.Info != nil {
 		for len(msg.Info.Calls) < len(req.Prog.Calls) {
 			msg.Info.Calls = append(msg.Info.Calls, &flatrpc.CallInfo{

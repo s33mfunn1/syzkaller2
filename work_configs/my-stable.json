@@ -1,27 +1,39 @@
 {
 	"target": "linux/amd64",
 	"http": "127.0.0.1:56741",
-	"workdir": "/home/sasha/syzkaller2/workdir",
-	"kernel_obj": "/home/sasha/linux-stable",
-	"image": "/home/sasha/image/trixie.img",
-	"sshkey": "/home/sasha/image/trixie.id_rsa",
-	"syzkaller": "/home/sasha/syzkaller2",
-	"procs": 1,
+	"workdir": "/root/syzkaller2/workdir",
+	"kernel_obj": "/root/linux-stable",
+	"image": "/root/image/trixie.img",
+	"sshkey": "/root/image/trixie.id_rsa",
+	"syzkaller": "/root/syzkaller2",
+	"procs": 2,
 	"cover": true,
 	"reproduce": false,
 	"enable_syscalls": [
+		"getpid",
+		"gettid",
+		"syz_open_procfs$namespace",
+		# Minimal interface setup for GTP via rtnetlink:
+		# RTM_NEWLINK(kind="gtp"), RTM_NEWADDR, RTM_SETLINK + packet injection
+		"socket$nl_route",
+		# Creators for sock_udp/sock_udp6 (IFLA_GTP_FD0/FD1) — both udp and udplite
+		"socket$inet_udp",
+		"socket$inet_udplite",
+		"socket$inet6_udp",
+		"socket$inet6_udplite",
+		"sendmsg$nl_route_gtp",
+		"ioctl$sock_SIOCGIFINDEX",
+		# Bind UDP sockets for GTP (kernel expects bound socket on port 2152)
+		"bind$inet",
+		"bind$inet6",
 		"syz_emit_ethernet"
 	],
-	"experimental": {
-		"remote_cover": true
-	},
 	"type": "qemu",
 	"vm": {
-		"count": 1,
-		"kernel": "/home/sasha/linux-stable/arch/x86/boot/bzImage",
+		"count": 2,
+		"kernel": "/root/linux-stable/arch/x86/boot/bzImage",
 		"cpu": 2,
 		"mem": 2048,
-		"qemu_args": "",
-		"cmdline": "net.ifnames=0 ipv6.disable=1"
+		"cmdline": "net.ifnames=0"
 	}
 }

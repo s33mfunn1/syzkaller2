@@ -1,0 +1,55 @@
+# Copyright 2024 syzkaller project authors. All rights reserved.
+# Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
+
+# GTP-only rtnetlink subset. Aligned with syz_emit_ethernet (vnet.txt) and gtp_tap_inject:
+# - Interface: gtp0, IP 192.168.60.1/24 (gtp in ipv4_addr)
+# - Packet: Eth(dst=aa:aa:aa:aa:aa:aa, src=02:02:02:02:02:02) -> IP(192.168.60.100->192.168.60.1) -> UDP(12345->2152) -> GTP1-U
+
+gtp_devname = "gtp0"
+
+# Only GTP link kind for RTM_NEWLINK/RTM_SETLINK
+ifla_info_policy_gtp [
+	gtp		ifla_info_policy$t["gtp", IFLA_INFO_DATA, array[gtp_policy]]
+] [varlen]
+
+# Minimal ifla_policy for GTP: no IFLA_XDP (fd_bpf_prog), no bridge/vlan specifics.
+# IFLA_IFNAME=gtp0 to match gtp_tap_inject; IFLA_GTP_LOCAL uses ipv4_addr.gtp (192.168.60.1)
+ifla_policy_gtp [
+	IFLA_IFNAME		nlattr[IFLA_IFNAME, string[gtp_devname, IFNAMSIZ]]
+	IFLA_ADDRESS		nlattr[IFLA_ADDRESS, mac_addr]
+	IFLA_BROADCAST		nlattr[IFLA_BROADCAST, mac_addr]
+	IFLA_MTU		nlattr[IFLA_MTU, int32]
+	IFLA_LINK		nlattr[IFLA_LINK, ifindex]
+	IFLA_MASTER		nlattr[IFLA_MASTER, ifindex]
+	IFLA_LINKINFO		nlnest[IFLA_LINKINFO, ifla_info_policy_gtp]
+	IFLA_NET_NS_PID		nlattr[IFLA_NET_NS_PID, pid]
+	IFLA_NET_NS_FD		nlattr[IFLA_NET_NS_FD, fd_namespace]
+] [varlen]
+
+# GTP interface addr: 192.168.60.1 to match syz_emit_ethernet ipv4_header_gtp dst_ip
+ipv4_addr_gtp_if_vals = 0xc0a83c01
+type ipv4_addr_gtp_if flags[ipv4_addr_gtp_if_vals, int32be]
+
+ifa_ipv4_policy_gtp [
+	IFA_LOCAL		nlattr[IFA_LOCAL, ipv4_addr_gtp_if]
+	IFA_ADDRESS		nlattr[IFA_ADDRESS, ipv4_addr_gtp_if]
+	IFA_BROADCAST		nlattr[IFA_BROADCAST, ipv4_addr_gtp_if]
+	IFA_LABEL		nlattr[IFA_LABEL, string[gtp_devname, IFNAMSIZ]]
+	IFA_CACHEINFO		nlattr[IFA_CACHEINFO, ifa_cacheinfo]
+	IFA_FLAGS		nlattr[IFA_FLAGS, flags[ifa_flags, int32]]
+	IFA_RT_PRIORITY		nlattr[IFA_RT_PRIORITY, int32]
+	IFA_TARGET_NETNSID	nlattr[IFA_TARGET_NETNSID, netns_id]
+] [varlen]
+
+# GTP-only netlink route messages: link ops + IPv4 addr (IPv4 only per vnet.txt GTP fuzzing)
+netlink_msg_route_gtp [
+	newlink		netlink_msg[RTM_NEWLINK, ifinfomsg[AF_UNSPEC], ifla_policy_gtp]
+	getlink		netlink_msg[RTM_GETLINK, ifinfomsg[AF_UNSPEC], ifla_policy_gtp]
+	setlink		netlink_msg[RTM_SETLINK, ifinfomsg[AF_UNSPEC], ifla_policy_gtp]
+	dellink		netlink_msg[RTM_DELLINK, ifinfomsg[AF_UNSPEC], ifla_policy_gtp]
+	ipv4_newaddr	netlink_msg[RTM_NEWADDR, ifaddrmsg[AF_INET], ifa_ipv4_policy_gtp]
+	ipv4_deladdr	netlink_msg[RTM_DELADDR, ifaddrmsg[AF_INET], ifa_ipv4_policy_gtp]
+	ipv4_getaddr	netlink_msg[RTM_GETADDR, ifaddrmsg[AF_INET], ifa_ipv4_policy_gtp]
+] [varlen]
+
+sendmsg$nl_route_gtp(fd sock_nl_route, msg ptr[in, msghdr_netlink[netlink_msg_route_gtp]], f flags[send_flags])

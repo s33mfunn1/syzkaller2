@@ -838,8 +838,6 @@ void parse_handshake(const handshake_req& req)
 	flag_sandbox_namespace = (bool)(req.flags & rpc::ExecEnv::SandboxNamespace);
 	flag_sandbox_android = (bool)(req.flags & rpc::ExecEnv::SandboxAndroid);
 	flag_extra_coverage = (bool)(req.flags & rpc::ExecEnv::ExtraCover);
-	fprintf(stderr, "[syz-exec] handshake: ExtraCover=%d (flags=0x%llx)\n",
-		(int)flag_extra_coverage, (unsigned long long)req.flags);
 	flag_net_injection = (bool)(req.flags & rpc::ExecEnv::EnableTun);
 	flag_net_devices = (bool)(req.flags & rpc::ExecEnv::EnableNetDev);
 	flag_net_reset = (bool)(req.flags & rpc::ExecEnv::EnableNetReset);
@@ -872,14 +870,6 @@ void parse_execute(const execute_req& req)
 	flag_dedup_cover = req.exec_flags & (uint64)rpc::ExecFlag::DedupCover;
 	flag_comparisons = req.exec_flags & (uint64)rpc::ExecFlag::CollectComps;
 	flag_threaded = req.exec_flags & (uint64)rpc::ExecFlag::Threaded;
-	// When collecting remote coverage (e.g. GTP via syz_emit_ethernet), kcov_common_handle()
-	// must return our handle. It returns current->kcov_handle, which is set only in the task
-	// that did KCOV_REMOTE_ENABLE (the main/loop thread). Worker threads have kcov_handle=0,
-	// so TUN would set skb->kcov_handle=0 and GTP would use wrong handle. Force non-threaded
-	// so we execute in the main thread which has kcov_handle set. See gtp_tap_inject.c which
-	// works because it does write() in the same thread that did KCOV_REMOTE_ENABLE.
-	if (flag_extra_coverage)
-		flag_threaded = false;
 	all_call_signal = req.all_call_signal;
 	all_extra_signal = req.all_extra_signal;
 
@@ -1252,9 +1242,7 @@ uint32 write_signal(flatbuffers::FlatBufferBuilder& fbb, int index, cover_t* cov
 			const uint64 mask = (1 << 12) - 1;
 			sig ^= hash(prev_pc & mask) & mask;
 		}
-		// Extra (index -1) is remote coverage (e.g. module); don't apply cover_filter
-		// so that triage can see new signal and add to corpus.
-		bool filter = (index == -1) || coverage_filter(pc);
+		bool filter = coverage_filter(pc);
 		// Ignore the edge only if both current and previous PCs are filtered out
 		// to capture all incoming and outcoming edges into the interesting code.
 		bool ignore = !filter && !prev_filter;
