@@ -16,7 +16,7 @@ type msghdr_nl_gtp[CMD] msghdr_netlink[netlink_msg_t[genl_gtp_family_id, genlmsg
 
 syz_genetlink_get_family_id$gtp(name ptr[in, string["gtp"]], fd sock_nl_generic) genl_gtp_family_id
 
-sendmsg$GTP_CMD_NEWPDP(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_NEWPDP]], f flags[send_flags])
+sendmsg$GTP_CMD_NEWPDP(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_NEWPDP]], f flags[send_flags]) (no_generate, no_minimize)
 sendmsg$GTP_CMD_DELPDP(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_DELPDP]], f flags[send_flags])
 sendmsg$GTP_CMD_GETPDP(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_GETPDP]], f flags[send_flags])
 sendmsg$GTP_CMD_ECHOREQ(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_ECHOREQ]], f flags[send_flags])
@@ -26,16 +26,19 @@ gtp_genl_policy [
 	GTPA_LINK		nlattr[GTPA_LINK, ifindex]
 	GTPA_VERSION		nlattr[GTPA_VERSION, int32[GTP_V0:GTP_V1]]
 	GTPA_TID		nlattr[GTPA_TID, int64[0:4]]
-	GTPA_PEER_ADDRESS	nlattr[GTPA_PEER_ADDRESS, ipv4_addr]
-	GTPA_MS_ADDRESS		nlattr[GTPA_MS_ADDRESS, ipv4_addr]
+	GTPA_PEER_ADDRESS	nlattr[GTPA_PEER_ADDRESS, gtp_peer_addr]
+	GTPA_MS_ADDRESS		nlattr[GTPA_MS_ADDRESS, gtp_ms_addr]
 	GTPA_FLOW		nlattr[GTPA_FLOW, int16[0:4]]
 	GTPA_NET_NS_FD		nlattr[GTPA_NET_NS_FD, fd_namespace]
-	GTPA_I_TEI		nlattr[GTPA_I_TEI, int32[0:4]]
-	GTPA_O_TEI		nlattr[GTPA_O_TEI, int32[0:4]]
+	GTPA_I_TEI		nlattr[GTPA_I_TEI, const[0xdeadbeef, int32]]
+	GTPA_O_TEI		nlattr[GTPA_O_TEI, const[0xdeadbeef, int32]]
 	GTPA_PEER_ADDR6		nlattr[GTPA_PEER_ADDR6, ipv6_addr]
 	GTPA_MS_ADDR6		nlattr[GTPA_MS_ADDR6, ipv6_addr]
 	GTPA_FAMILY		nlattr[GTPA_FAMILY, int8[socket_domain]]
 ] [varlen]
+
+type gtp_ms_addr const[0xc0a80101, int32be]
+type gtp_peer_addr const[0xac1414bb, int32be]
 
 gtp_policy_fd [
 	udp	sock_udp

@@ -1,9 +1,10 @@
 # Copyright 2024 syzkaller project authors. All rights reserved.
 # Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
-# GTP-only rtnetlink subset. Aligned with syz_emit_ethernet (vnet.txt) and gtp_tap_inject:
-# - Interface: gtp0, IP 192.168.60.1/24 (gtp in ipv4_addr)
-# - Packet: Eth(dst=aa:aa:aa:aa:aa:aa, src=02:02:02:02:02:02) -> IP(192.168.60.100->192.168.60.1) -> UDP(12345->2152) -> GTP1-U
+# GTP-only rtnetlink subset. Aligned with syz_emit_ethernet$gtp (vnet_gtp.txt):
+# - Interface: gtp0, IP 192.168.60.1/24
+# - Packet: Eth(dst=aa:aa:aa:aa:aa:aa, src=02:02:02:02:02:02) -> IP(198.51.100.1->192.168.60.1) -> UDP(12345->2152) -> GTP1-U
+#   Source 198.51.100.1 (TEST-NET-2) to avoid allow_local=0 rejection.
 
 gtp_devname = "gtp0"
 
@@ -26,7 +27,7 @@ ifla_policy_gtp [
 	IFLA_NET_NS_FD		nlattr[IFLA_NET_NS_FD, fd_namespace]
 ] [varlen]
 
-# GTP interface addr: 192.168.60.1 to match syz_emit_ethernet ipv4_header_gtp dst_ip
+# GTP interface addr: 192.168.60.1 (dst in syz_emit_ethernet$gtp)
 ipv4_addr_gtp_if_vals = 0xc0a83c01
 type ipv4_addr_gtp_if flags[ipv4_addr_gtp_if_vals, int32be]
 
@@ -52,4 +53,5 @@ netlink_msg_route_gtp [
 	ipv4_getaddr	netlink_msg[RTM_GETADDR, ifaddrmsg[AF_INET], ifa_ipv4_policy_gtp]
 ] [varlen]
 
-sendmsg$nl_route_gtp(fd sock_nl_route, msg ptr[in, msghdr_netlink[netlink_msg_route_gtp]], f flags[send_flags])
+sendmsg$nl_route_gtp(fd sock_nl_route, msg ptr[in, msghdr_netlink[netlink_msg_route_gtp]], f flags[send_flags]) (no_generate, no_minimize)
+ioctl$sock_SIOCGIFINDEX_gtp(fd sock, cmd const[SIOCGIFINDEX], arg ptr[out, ifreq_dev_t[gtp_devname, ifindex]])

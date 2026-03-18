@@ -18,19 +18,26 @@
     "gettid",
     "syz_open_procfs$namespace",
     "socket$nl_route",
+    "socket$nl_generic",
     "socket$inet_udp",
     "socket$inet_udplite",
     "socket$inet6_udp",
     "socket$inet6_udplite",
     "sendmsg$nl_route_gtp",
-    "ioctl$sock_SIOCGIFINDEX",
+    "syz_genetlink_get_family_id$gtp",
+    "sendmsg$GTP_CMD_NEWPDP",
+    "syz_extract_tcp_res",
+    "syz_extract_tcp_res$synack",
+    "ioctl$sock_SIOCGIFINDEX_gtp",
     "bind$inet",
     "bind$inet6",
     "syz_emit_ethernet"
   ],
   "no_mutate_syscalls": [
     "sendmsg$nl_route_gtp",
-    "ioctl$sock_SIOCGIFINDEX"
+    "ioctl$sock_SIOCGIFINDEX_gtp",
+    "sendmsg$GTP_CMD_NEWPDP",
+    "syz_emit_ethernet"
   ],
   "experimental": {
     "remote_cover": false,
@@ -54,7 +61,7 @@
   },
   "type": "qemu",
   "vm": {
-    "count": 2,
+    "count": 3,
     "kernel": "/root/linux-stable/arch/x86/boot/bzImage",
     "cpu": 2,
     "mem": 2048,

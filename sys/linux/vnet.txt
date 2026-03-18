@@ -827,6 +827,7 @@ udp_packet {
 udp_payload [
 	opaque	array[int8]
 	gue	gue_packet
+	gtp	gtp_packet
 	wg	wg_packet
 ] [varlen]
 
@@ -846,6 +847,90 @@ guehdr {
 
 guehdr_flags = GUE_FLAG_PRIV
 guehdr_prov_flags = GUE_PFLAG_REMCSUM
+
+# GTP (GPRS Tunnelling Protocol) over UDP (typically 2152 for GTPv1-U).
+# We keep this in vnet.txt so seeds can use regular syz_emit_ethernet.
+gtp_msg_types = 1, 2, 255
+
+gtp_payload_inner_ip {
+	ver_ihl	const[0x45, int8]
+	tos	const[0, int8]
+	tot_len	const[0x14, int16be]
+	id	const[0, int16be]
+	frag	const[0, int16be]
+	ttl	const[0, int8]
+	proto	const[17, int8]
+	csum	const[0, int16be]
+	src	const[0xc0a80101, int32be]
+	dst	const[0xc0a80102, int32be]
+} [packed]
+
+gtp0_header_encap {
+	flags	const[0x1e, int8]
+	type	const[255, int8]
+	length	const[0x14, int16be]
+	seq	const[0, int16be]
+	flow	const[0, int16be]
+	number	const[0, int8]
+	spare	array[const[0, int8], 3]
+	tid	const[0xdeadbeef, int64be]
+} [packed]
+
+gtp1_header_encap {
+	flags	const[0x30, int8]
+	type	const[255, int8]
+	length	const[0x14, int16be]
+	tid	const[0xdeadbeef, int32be]
+} [packed]
+
+gtp0_packet_encap {
+	hdr	gtp0_header_encap
+	payload	gtp_payload_inner_ip
+} [packed]
+
+gtp1_packet_encap {
+	hdr	gtp1_header_encap
+	payload	gtp_payload_inner_ip
+} [packed]
+
+gtp0_header {
+	flags	int8
+	type	flags[gtp_msg_types, int8]
+	length	int16be
+	seq	int16be
+	flow	int16be
+	number	int8
+	spare	array[const[0, int8], 3]
+	tid	int64be
+} [packed]
+
+gtp1_header {
+	flags	int8
+	type	flags[gtp_msg_types, int8]
+	length	int16be
+	tid	int32be
+} [packed]
+
+gtp_payload [
+	opaque	array[int8]
+] [varlen]
+
+gtp0_packet {
+	hdr	gtp0_header
+	payload	gtp_payload
+} [packed]
+
+gtp1_packet {
+	hdr	gtp1_header
+	payload	gtp_payload
+} [packed]
+
+gtp_packet [
+	gtp0		gtp0_packet
+	gtp0_encap	gtp0_packet_encap
+	gtp1		gtp1_packet
+	gtp1_encap	gtp1_packet_encap
+] [varlen]
 
 ################################################################################
 ###################################### GRE #####################################
