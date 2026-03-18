@@ -848,8 +848,12 @@ guehdr {
 guehdr_flags = GUE_FLAG_PRIV
 guehdr_prov_flags = GUE_PFLAG_REMCSUM
 
-# GTP (GPRS Tunnelling Protocol) over UDP (typically 2152 for GTPv1-U).
-# We keep this in vnet.txt so seeds can use regular syz_emit_ethernet.
+################################################################################
+###################################### GTP #####################################
+################################################################################
+
+# https://en.wikipedia.org/wiki/GPRS_Tunnelling_Protocol
+
 gtp_msg_types = 1, 2, 255
 
 gtp_payload_inner_ip {
