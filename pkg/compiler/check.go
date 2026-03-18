@@ -8,7 +8,6 @@ package compiler
 import (
 	"errors"
 	"fmt"
-	"os"
 	"regexp"
 	"strings"
 
@@ -821,9 +820,6 @@ func (comp *compiler) collectUsedType(structs, flags, strflags map[string]bool, 
 }
 
 func (comp *compiler) checkUnused() {
-	if os.Getenv("SYZ_ALLOW_UNUSED") != "" {
-		return
-	}
 	for _, n := range comp.collectUnused() {
 		pos, typ, name := n.Info()
 		comp.error(pos, "unused %v %v", typ, name)
