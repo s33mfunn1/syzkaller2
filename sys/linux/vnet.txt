@@ -57,10 +57,16 @@ mac_addr_link_local_values = 0x0, 0x1, 0x2, 0x3, 0xe
 # This corresponds to the last digit in DEV_MAC/DEV_IPV4/DEV_IPV6 in executor/common_linux.h
 type netdev_addr_id int8[10:68]
 
-# For GTP: local = TUN MAC (dst), gtp_src = 02:02:02:02:02:02 (src, per gtp_tap_inject)
 mac_addr [
-	local	mac_addr_t[const[0xaa, int8]]
-	gtp_src	array[const[0x2, int8], 6]
+	empty		array[const[0x0, int8], 6]
+# These correspond to LOCAL_MAC/REMOTE_MAC/DEV_MAC in executor/common_linux.h
+	local		mac_addr_t[const[0xaa, int8]]
+	remote		mac_addr_t[const[0xbb, int8]]
+	dev		mac_addr_t[netdev_addr_id]
+	broadcast	array[const[0xff, int8], 6]
+	multicast	array[const[0xbb, int8], 6]
+	link_local	mac_addr_link_local
+	random		array[int8, 6]
 ]
 
 type mac_addr_mask array[flags[mac_addr_mask_vals, int8], 6]
@@ -85,18 +91,12 @@ vlan_tag {
 	tag_q	vlan_tag_q
 } [packed]
 
-# Fixed GTP encap: dst=TUN MAC (local), src=02:02:02:02:02:02, per gtp_tap_inject
-eth_packet_gtp_encap {
-	dst_mac	mac_addr_t[const[0xaa, int8]]
-	src_mac	array[const[0x2, int8], 6]
+eth_packet {
+	dst_mac	mac_addr
+	src_mac	mac_addr
 	vtag	optional[vlan_tag]
-	payload	eth2_packet_t[ETH_P_IP, ipv4_packet_gtp]
+	payload	eth_payload
 } [packed]
-
-# Only GTP encap packet, per gtp_tap_inject
-eth_packet [
-	gtp_encap	eth_packet_gtp_encap
-] [varlen]
 
 eth_payload {
 	eth2	eth2_packet
@@ -110,9 +110,18 @@ eth_payload {
 
 ether_types = ETH_P_LOOP, ETH_P_PUP, ETH_P_PUPAT, ETH_P_TSN, ETH_P_IP, ETH_P_X25, ETH_P_ARP, ETH_P_IEEEPUP, ETH_P_IEEEPUPAT, ETH_P_BATMAN, ETH_P_DEC, ETH_P_DNA_DL, ETH_P_DNA_RC, ETH_P_DNA_RT, ETH_P_LAT, ETH_P_DIAG, ETH_P_CUST, ETH_P_SCA, ETH_P_TEB, ETH_P_RARP, ETH_P_ATALK, ETH_P_AARP, ETH_P_8021Q, ETH_P_ERSPAN, ETH_P_ERSPAN2, ETH_P_IPV6, ETH_P_PAUSE, ETH_P_SLOW, ETH_P_WCCP, ETH_P_MPLS_UC, ETH_P_MPLS_MC, ETH_P_ATMMPOA, ETH_P_PPP_DISC, ETH_P_PPP_SES, ETH_P_LINK_CTL, ETH_P_ATMFATE, ETH_P_PAE, ETH_P_AOE, ETH_P_8021AD, ETH_P_802_EX1, ETH_P_TIPC, ETH_P_MACSEC, ETH_P_8021AH, ETH_P_MVRP, ETH_P_1588, ETH_P_NCSI, ETH_P_PRP, ETH_P_FCOE, ETH_P_TDLS, ETH_P_FIP, ETH_P_80221, ETH_P_HSR, ETH_P_LOOPBACK, ETH_P_QINQ1, ETH_P_QINQ2, ETH_P_QINQ3, ETH_P_EDSA, ETH_P_AF_IUCV, ETH_P_802_3_MIN, ETH_P_802_3, ETH_P_AX25, ETH_P_ALL, ETH_P_802_2, ETH_P_SNAP, ETH_P_DDCMP, ETH_P_WAN_PPP, ETH_P_PPP_MP, ETH_P_LOCALTALK, ETH_P_CAN, ETH_P_CANFD, ETH_P_PPPTALK, ETH_P_TR_802_2, ETH_P_MOBITEX, ETH_P_CONTROL, ETH_P_IRDA, ETH_P_ECONET, ETH_P_HDLC, ETH_P_ARCNET, ETH_P_DSA, ETH_P_TRAILER, ETH_P_PHONET, ETH_P_IEEE802154, ETH_P_CAIF, ETH_P_XDSA, ETH_P_MAP
 
-# IPv4 only - no IPv6 for minimal GTP fuzzing
 eth2_packet [
+	generic	eth2_packet_generic
+	arp	eth2_packet_t[ETH_P_ARP, arp_packet]
 	ipv4	eth2_packet_t[ETH_P_IP, ipv4_packet]
+	ipv6	eth2_packet_t[ETH_P_IPV6, ipv6_packet]
+	llc	eth2_packet_t[ETH_P_802_2, llc_packet]
+	llc_tr	eth2_packet_t[ETH_P_TR_802_2, llc_packet]
+	x25	eth2_packet_t[ETH_P_X25, x25_packet]
+	mpls_uc	eth2_packet_t[ETH_P_MPLS_UC, mpls_packet]
+	mpls_mc	eth2_packet_t[ETH_P_MPLS_MC, mpls_packet]
+	can	eth2_packet_t[ETH_P_CAN, can_frame]
+	canfd	eth2_packet_t[ETH_P_CANFD, canfd_frame]
 ] [varlen]
 
 eth2_packet_generic {
@@ -248,10 +257,26 @@ ipv4_addr_initdev {
 	a3	proc[1, 1, int8]
 }
 
-# GTP: gtp_ext=192.168.60.100 (src), gtp=192.168.60.1 (dst), per gtp_tap_inject
 ipv4_addr [
-	gtp_ext	const[0xc0a83c64, int32be]
-	gtp	const[0xc0a83c01, int32be]
+# Few public random addresses 100.1.1.[0-2]
+	rand_addr	int32be[0x64010100:0x64010102]
+# 0.0.0.0
+	empty		const[0x0, int32be]
+# These correspond to LOCAL_IPV4/REMOTE_IPV4/DEV_IPV4 in executor/common_linux.h
+	local		ipv4_addr_t[const[170, int8]]
+	remote		ipv4_addr_t[const[187, int8]]
+	dev		ipv4_addr_t[netdev_addr_id]
+	initdev		ipv4_addr_initdev
+# 127.0.0.1
+	loopback	const[0x7f000001, int32be]
+# 224.0.0.1
+	multicast1	const[0xe0000001, int32be]
+# 224.0.0.2
+	multicast2	const[0xe0000002, int32be]
+# 255.255.255.255
+	broadcast	const[0xffffffff, int32be]
+# 10.1.1.[0-2] can be used for custom things within the image
+	private		int32be[0xa010100:0xa010102]
 ] [size[4]]
 
 type ipv4_addr_mask flags[ipv4_addr_mask_vals, int32be]
@@ -371,39 +396,16 @@ type ipv4_packet_t[PROTO, PAYLOAD] {
 	payload	PAYLOAD
 } [packed]
 
-# Fixed GTP encap packet: src 192.168.60.100 -> dst 192.168.60.1, UDP 12345->2152, per gtp_tap_inject
-ipv4_header_gtp {
-	ihl		bytesize4[parent, int8:4]
-	version		const[4, int8:4]
-	ecn		const[0, int8:2]
-	dscp		const[0, int8:6]
-	total_len	len[ipv4_packet_gtp, int16be]
-	id		const[1, int16be]
-	frag_off	const[0, int16be]
-	ttl		const[64, int8]
-	protocol	const[IPPROTO_UDP, int8]
-	csum		csum[parent, inet, int16be]
-	src_ip		const[0xc0a83c64, int32be]
-	dst_ip		const[0xc0a83c01, int32be]
-	options		ipv4_options
-} [packed]
-
-udp_packet_gtp {
-	src_port	const[12345, int16be]
-	dst_port	const[2152, int16be]
-	length		len[parent, int16be]
-	csum		csum[parent, pseudo, IPPROTO_UDP, int16be]
-	payload		udp_payload
-} [packed]
-
-ipv4_packet_gtp {
-	header	ipv4_header_gtp
-	payload	udp_packet_gtp
-} [packed]
-
 ipv4_packet [
+	generic	ipv4_packet_t[flags[ipv4_types, int8], array[int8]]
+	tcp	ipv4_packet_t[const[IPPROTO_TCP, int8], tcp_packet]
 	udp	ipv4_packet_t[const[IPPROTO_UDP, int8], udp_packet]
-	udp_gtp	ipv4_packet_t[const[IPPROTO_UDP, int8], udp_packet_gtp]
+	icmp	ipv4_packet_t[const[IPPROTO_ICMP, int8], icmp_packet]
+	dccp	ipv4_packet_t[const[IPPROTO_DCCP, int8], dccp_packet]
+	igmp	ipv4_packet_t[const[IPPROTO_IGMP, int8], igmp_packet]
+	gre	ipv4_packet_t[const[IPPROTO_GRE, int8], gre_packet]
+# TODO: what proto do we need for tipc (there is no IPPROTO_TIPC)?
+	tipc	ipv4_packet_t[const[IPPROTO_TCP, int8], tipc_packet]
 ] [varlen]
 
 ################################################################################
@@ -640,7 +642,14 @@ ipv6_tlv_enc_lim {
 } [packed]
 
 ipv6_packet [
-	udp	ipv6_packet_t[const[IPPROTO_UDP, int8], udp_packet]
+	generic		ipv6_packet_t[flags[ipv6_types, int8], array[int8]]
+	tcp		ipv6_packet_t[const[IPPROTO_TCP, int8], tcp_packet]
+	udp		ipv6_packet_t[const[IPPROTO_UDP, int8], udp_packet]
+	icmpv6		ipv6_packet_t[const[IPPROTO_ICMPV6, int8], icmpv6_packet]
+	dccp_packet	ipv6_packet_t[const[IPPROTO_DCCP, int8], dccp_packet]
+	gre_packet	ipv6_packet_t[const[IPPROTO_GRE, int8], gre_packet]
+# TODO: what proto do we need for tipc (there is no IPPROTO_TIPC)?
+	tipc_packet	ipv6_packet_t[const[IPPROTO_TCP, int8], tipc_packet]
 ] [varlen]
 
 type ipv6_packet_t[PROTO, PAYLOAD] {
@@ -815,9 +824,10 @@ udp_packet {
 	payload		udp_payload
 } [packed]
 
-# Fixed GTP1-U encap only, per gtp_tap_inject
 udp_payload [
-	gtp_encap	gtp1_packet_encap
+	opaque	array[int8]
+	gue	gue_packet
+	wg	wg_packet
 ] [varlen]
 
 gue_packet {
@@ -836,103 +846,6 @@ guehdr {
 
 guehdr_flags = GUE_FLAG_PRIV
 guehdr_prov_flags = GUE_PFLAG_REMCSUM
-
-################################################################################
-###################################### GTP ######################################
-################################################################################
-
-# GPRS Tunnelling Protocol (GTP-U)
-# GSM TS 09.60 / 3GPP TS 29.060, 3GPP TS 29.281
-# GTP packets are carried in UDP. GTPv0 uses port 3386, GTPv1-U uses port 2152.
-# See gtp_encap_recv() in drivers/net/gtp.c
-
-# GTP message types (from net/gtp.h)
-gtp_msg_types = 1, 2, 255
-
-# GTPv0 header (GSM TS 09.60)
-gtp0_header {
-	flags	int8
-	type	flags[gtp_msg_types, int8]
-	length	int16be
-	seq	int16be
-	flow	int16be
-	number	int8
-	spare	array[const[0, int8], 3]
-	tid	int64be
-} [packed]
-
-# GTPv1 header - minimal 8-byte form (3GPP TS 29.060)
-gtp1_header {
-	flags	int8
-	type	flags[gtp_msg_types, int8]
-	length	int16be
-	tid	int32be
-} [packed]
-
-# GTPv1 header - long form with optional sequence number and N-PDU (3GPP TS 29.060)
-gtp1_header_long {
-	flags	int8
-	type	flags[gtp_msg_types, int8]
-	length	int16be
-	tid	int32be
-	seq	int16be
-	npdu	int8
-	next	int8
-} [packed]
-
-# GTP payload: for G-PDU (GTP_TPDU) typically IP packet; use opaque to avoid recursion
-gtp_payload [
-	opaque	array[int8]
-] [varlen]
-
-# Fixed GTP1-U T-PDU per gtp_tap_inject: flags=0x30, type=255, tid=0xdeadbeef, minimal inner IP
-gtp1_header_encap {
-	flags	const[0x30, int8]
-	type	const[255, int8]
-	length	const[0x14, int16be]
-	tid	const[0xdeadbeef, int32be]
-} [packed]
-
-# Minimal inner IP (20 bytes): 45 00 00 14 ... proto 17, 192.168.1.1 -> 192.168.1.2
-gtp_payload_inner_ip {
-	ver_ihl	const[0x45, int8]
-	tos	const[0, int8]
-	tot_len	const[0x14, int16be]
-	id	const[0, int16be]
-	frag	const[0, int16be]
-	ttl	const[0, int8]
-	proto	const[17, int8]
-	csum	const[0, int16be]
-	src	const[0xc0a80101, int32be]
-	dst	const[0xc0a80102, int32be]
-} [packed]
-
-gtp1_packet_encap {
-	hdr	gtp1_header_encap
-	payload	gtp_payload_inner_ip
-} [packed]
-
-gtp_packet [
-	gtp0		gtp0_packet
-	gtp1		gtp1_packet
-	gtp1_encap	gtp1_packet_encap
-	gtp1_long	gtp1_packet_long
-] [varlen]
-
-gtp0_packet {
-	hdr	gtp0_header
-	payload	gtp_payload
-} [packed]
-
-gtp1_packet {
-	hdr	gtp1_header
-	payload	gtp_payload
-} [packed]
-
-gtp1_packet_long {
-	hdr	gtp1_header_long
-	payload	gtp_payload
-} [packed]
 
 ################################################################################
 ###################################### GRE #####################################
