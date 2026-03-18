@@ -16,7 +16,7 @@ type msghdr_nl_gtp[CMD] msghdr_netlink[netlink_msg_t[genl_gtp_family_id, genlmsg
 
 syz_genetlink_get_family_id$gtp(name ptr[in, string["gtp"]], fd sock_nl_generic) genl_gtp_family_id
 
-sendmsg$GTP_CMD_NEWPDP(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_NEWPDP]], f flags[send_flags]) (no_generate, no_minimize)
+sendmsg$GTP_CMD_NEWPDP(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_NEWPDP]], f flags[send_flags])
 sendmsg$GTP_CMD_DELPDP(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_DELPDP]], f flags[send_flags])
 sendmsg$GTP_CMD_GETPDP(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_GETPDP]], f flags[send_flags])
 sendmsg$GTP_CMD_ECHOREQ(fd sock_nl_generic, msg ptr[in, msghdr_nl_gtp[GTP_CMD_ECHOREQ]], f flags[send_flags])
