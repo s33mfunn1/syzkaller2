@@ -636,10 +636,6 @@ static void loop(void)
 		if (!flag_snapshot)
 			receive_execute();
 #endif
-#if SYZ_HAVE_SETUP_EXT_TEST
-		// Run in loop process (has syz_tun) before fork - child inherits gtp0
-		setup_ext_test();
-#endif
 		int pid = fork();
 		if (pid < 0)
 			fail("clone failed");
@@ -650,6 +646,9 @@ static void loop(void)
 #endif
 #if SYZ_HAVE_SETUP_TEST
 			setup_test();
+#endif
+#if SYZ_HAVE_SETUP_EXT_TEST
+			setup_ext_test();
 #endif
 #if SYZ_EXECUTOR
 			close(kInPipeFd);

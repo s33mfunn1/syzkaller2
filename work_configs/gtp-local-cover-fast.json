@@ -44,7 +44,7 @@
             "^drivers/net/gtp\\.c$"
           ]
         },
-        "weight": 20.0
+        "weight": 10.0
       },
       {
         "name": "rest",

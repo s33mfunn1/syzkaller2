@@ -1,8 +1,6 @@
 // Copyright 2022 syzkaller project authors. All rights reserved.
 // Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
-#include <net/if.h>
-
 // This file is included into executor and C reproducers and can be used to add
 // non-mainline pseudo-syscalls and to provide some other extension points
 // w/o changing any other files. See common_ext_example.h for an example implementation.
@@ -14,13 +12,3 @@
 
 // This file can also define SYZ_HAVE_SETUP_EXT_TEST to 1 and provide
 // void setup_ext_test() function that will be called during setup of each test process.
-
-#define SYZ_HAVE_SETUP_EXT_TEST 1
-static void setup_ext_test(void)
-{
-	// GTP packets: syz_emit_ethernet writes to syz_tun (dst=192.168.60.1).
-	// rp_filter=1 would DROP: packet from 192.168.60.100 to 192.168.60.1
-	// arrives on syz_tun, but "proper" reverse path is via gtp0.
-	write_file("/proc/sys/net/ipv4/conf/syz_tun/rp_filter", "0");
-	write_file("/proc/sys/net/ipv4/conf/syz_tun/accept_local", "1");
-}
