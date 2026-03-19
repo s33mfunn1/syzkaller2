@@ -10,9 +10,6 @@
   "procs": 1,
   "cover": true,
   "raw_cover": true,
-  "reproduce": false,
-  "sandbox": "none",
-  "preserve_corpus": false,
   "enable_syscalls": [
     "getpid",
     "gettid",
@@ -33,20 +30,7 @@
     "bind$inet6",
     "syz_emit_ethernet"
   ],
-  "no_mutate_syscalls": [
-    "socket$nl_route",
-    "socket$nl_generic",
-    "socket$inet_udp",
-    "sendmsg$nl_route_gtp",
-    "syz_genetlink_get_family_id$gtp",
-    "sendmsg$GTP_CMD_NEWPDP",
-    "ioctl$sock_SIOCGIFINDEX_gtp",
-    "syz_emit_ethernet"
-  ],
   "experimental": {
-    "remote_cover": true,
-    "cover_edges": true,
-    "descriptions_mode": "manual",
     "focus_areas": [
       {
         "name": "gtp",
