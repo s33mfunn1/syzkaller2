@@ -1,4 +1,4 @@
-# Copyright 2024 syzkaller project authors. All rights reserved.
+# Copyright 2026 syzkaller project authors. All rights reserved.
 # Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
 # GTP-only rtnetlink subset. Aligned with syz_emit_ethernet GTP packets (vnet.txt udp_payload.gtp):
