@@ -1,10 +1,8 @@
 # Copyright 2024 syzkaller project authors. All rights reserved.
 # Use of this source code is governed by Apache 2 LICENSE that can be found in the LICENSE file.
 
-# GTP-only rtnetlink subset. Aligned with syz_emit_ethernet$gtp (vnet_gtp.txt):
-# - Interface: gtp0, IP 192.168.60.1/24
-# - Packet: Eth(dst=aa:aa:aa:aa:aa:aa, src=02:02:02:02:02:02) -> IP(198.51.100.1->192.168.60.1) -> UDP(12345->2152) -> GTP1-U
-#   Source 198.51.100.1 (TEST-NET-2) to avoid allow_local=0 rejection.
+# GTP-only rtnetlink subset. Aligned with syz_emit_ethernet GTP packets (vnet.txt udp_payload.gtp):
+# - Interface: gtp0
 
 gtp_devname = "gtp0"
 
@@ -14,7 +12,7 @@ ifla_info_policy_gtp [
 ] [varlen]
 
 # Minimal ifla_policy for GTP: no IFLA_XDP (fd_bpf_prog), no bridge/vlan specifics.
-# IFLA_IFNAME=gtp0 to match gtp_tap_inject; IFLA_GTP_LOCAL uses ipv4_addr.gtp (192.168.60.1)
+# IFLA_IFNAME=gtp0; IFLA_GTP_LOCAL is in gtp_policy (socket_netlink_generic_gtp.txt) with generic ipv4_addr
 ifla_policy_gtp [
 	IFLA_IFNAME		nlattr[IFLA_IFNAME, string[gtp_devname, IFNAMSIZ]]
 	IFLA_ADDRESS		nlattr[IFLA_ADDRESS, mac_addr]
@@ -27,14 +25,10 @@ ifla_policy_gtp [
 	IFLA_NET_NS_FD		nlattr[IFLA_NET_NS_FD, fd_namespace]
 ] [varlen]
 
-# GTP interface addr: 192.168.60.1 (dst in syz_emit_ethernet$gtp)
-ipv4_addr_gtp_if_vals = 0xc0a83c01
-type ipv4_addr_gtp_if flags[ipv4_addr_gtp_if_vals, int32be]
-
 ifa_ipv4_policy_gtp [
-	IFA_LOCAL		nlattr[IFA_LOCAL, ipv4_addr_gtp_if]
-	IFA_ADDRESS		nlattr[IFA_ADDRESS, ipv4_addr_gtp_if]
-	IFA_BROADCAST		nlattr[IFA_BROADCAST, ipv4_addr_gtp_if]
+	IFA_LOCAL		nlattr[IFA_LOCAL, ipv4_addr]
+	IFA_ADDRESS		nlattr[IFA_ADDRESS, ipv4_addr]
+	IFA_BROADCAST		nlattr[IFA_BROADCAST, ipv4_addr]
 	IFA_LABEL		nlattr[IFA_LABEL, string[gtp_devname, IFNAMSIZ]]
 	IFA_CACHEINFO		nlattr[IFA_CACHEINFO, ifa_cacheinfo]
 	IFA_FLAGS		nlattr[IFA_FLAGS, flags[ifa_flags, int32]]
