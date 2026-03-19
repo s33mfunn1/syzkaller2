@@ -728,6 +728,13 @@ static void initialize_tun(void)
 	write_file(sysctl, "0");
 	// There seems to be no way to disable IPv6 MTD to prevent more IPv6 spam.
 
+	// Disable rp_filter for GTP/syz_emit_ethernet: effective = max(all, default, iface).
+	// Strict rp_filter would DROP packets when FIB prefers another iface (e.g. gtp0) for reverse path.
+	write_file("/proc/sys/net/ipv4/conf/all/rp_filter", "0");
+	write_file("/proc/sys/net/ipv4/conf/default/rp_filter", "0");
+	sprintf(sysctl, "/proc/sys/net/ipv4/conf/%s/rp_filter", TUN_IFACE);
+	write_file(sysctl, "0");
+
 	int sock = socket(AF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
 	if (sock == -1)
 		fail("socket(AF_NETLINK) failed");

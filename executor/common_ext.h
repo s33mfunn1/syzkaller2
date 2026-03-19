@@ -12,13 +12,3 @@
 
 // This file can also define SYZ_HAVE_SETUP_EXT_TEST to 1 and provide
 // void setup_ext_test() function that will be called during setup of each test process.
-#define SYZ_HAVE_SETUP_EXT_TEST 1
-static void setup_ext_test(void)
-{
-	// GTP packets: syz_emit_ethernet writes to syz_tun (src=172.20.20.187, dst=172.20.20.170).
-	// Both syz_tun and gtp0 have routes for 172.20.20.0/24.
-	// Effective rp_filter = max(all, iface), so we must zero both.
-	// Strict rp_filter would DROP if FIB prefers gtp0 for reverse path.
-	write_file("/proc/sys/net/ipv4/conf/all/rp_filter", "0");
-	write_file("/proc/sys/net/ipv4/conf/syz_tun/rp_filter", "0");
-}
