@@ -3,8 +3,6 @@
 
 # AF_NETLINK/NETLINK_GENERIC/gtp support.
 
-# TODO: describe gtp packets in vnet.txt (they go inside of udp packets, see gtp_encap_recv()).
-
 include <linux/net.h>
 include <uapi/linux/netlink.h>
 include <uapi/linux/genetlink.h>
