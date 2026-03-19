@@ -45,7 +45,7 @@
   },
   "type": "qemu",
   "vm": {
-    "count": 1,
+    "count": 3,
     "kernel": "/root/linux-stable/arch/x86/boot/bzImage",
     "cpu": 2,
     "mem": 2048,
